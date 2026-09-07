@@ -142,6 +142,7 @@ class _QrScreenState extends ConsumerState<QrScreen> {
   }
 
   void _onShareWithPinPressed() {
+    HapticFeedback.selectionClick();
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,

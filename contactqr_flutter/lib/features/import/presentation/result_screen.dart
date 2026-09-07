@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/primary_button.dart';
@@ -35,6 +36,7 @@ class _ResultScreenState extends State<ResultScreen> with SingleTickerProviderSt
   @override
   void initState() {
     super.initState();
+    HapticFeedback.mediumImpact();
     _animController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 600),

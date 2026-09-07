@@ -110,6 +110,7 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> with SingleTicker
 
   Future<void> _pickAndScanFromGallery() async {
     if (_isProcessing || _isDownloading) return;
+    HapticFeedback.selectionClick();
 
     try {
       final picker = ImagePicker();
@@ -162,6 +163,7 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> with SingleTicker
   }
 
   Future<void> _showPasteLinkDialog() async {
+    HapticFeedback.selectionClick();
     final clipboardData = await Clipboard.getData(Clipboard.kTextPlain);
     final clipboardText = clipboardData?.text?.trim() ?? '';
 
@@ -210,6 +212,7 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> with SingleTicker
             const SizedBox(height: 16),
             TextField(
               controller: controller,
+              autofocus: true,
               maxLines: 3,
               style: const TextStyle(fontSize: 14, color: AppColors.ink),
               decoration: InputDecoration(

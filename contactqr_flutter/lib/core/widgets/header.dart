@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../theme/app_colors.dart';
 
 class Header extends StatelessWidget {
@@ -21,7 +22,14 @@ class Header extends StatelessWidget {
     child: Row(
       children: [
         IconButton(
-          onPressed: onBack ?? () => Navigator.pop(context),
+          onPressed: () {
+            HapticFeedback.selectionClick();
+            if (onBack != null) {
+              onBack!();
+            } else {
+              Navigator.pop(context);
+            }
+          },
           icon: Icon(
             Icons.arrow_back_ios_new,
             size: 18,

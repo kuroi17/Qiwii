@@ -201,6 +201,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
       child: LayoutBuilder(
         builder: (context, constraints) {
           return SingleChildScrollView(
+            physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
             child: ConstrainedBox(
               constraints: BoxConstraints(
                 minHeight: constraints.maxHeight,
@@ -266,6 +267,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
                           child: PopupMenuButton<String>(
                             tooltip: 'More options',
                             offset: const Offset(0, 46),
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
                             icon: Container(
                               width: 38,
                               height: 38,
@@ -280,7 +283,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
                                 size: 20,
                               ),
                             ),
+                            onOpened: () => HapticFeedback.selectionClick(),
                             onSelected: (value) async {
+                              HapticFeedback.selectionClick();
                               if (value == 'feedback') {
                                 final uri = Uri.parse(
                                   'https://github.com/kuroi17/Qiwii-Easy-Contact-Share-QR/issues',

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/card_box.dart';
@@ -159,6 +160,7 @@ class _SendScreenState extends ConsumerState<SendScreen> {
                             ),
                             TextButton(
                               onPressed: () {
+                                HapticFeedback.selectionClick();
                                 if (allFilteredSelected) {
                                   senderNotifier.clearAll();
                                 } else {
@@ -204,6 +206,7 @@ class _SendScreenState extends ConsumerState<SendScreen> {
                               ),
                             )
                           : ListView.separated(
+                              physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
                               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                               itemCount: filtered.length,
                               separatorBuilder: (_, _) => const Divider(height: 1, color: AppColors.border),
@@ -212,7 +215,10 @@ class _SendScreenState extends ConsumerState<SendScreen> {
                                 return ContactRow(
                                   contact: contact,
                                   selected: selectedIds.contains(contact.id),
-                                  onTap: () => senderNotifier.toggleContact(contact.id),
+                                  onTap: () {
+                                    HapticFeedback.selectionClick();
+                                    senderNotifier.toggleContact(contact.id);
+                                  },
                                 );
                               },
                             ),

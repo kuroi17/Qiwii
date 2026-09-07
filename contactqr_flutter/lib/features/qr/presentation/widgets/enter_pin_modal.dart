@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../../core/theme/app_colors.dart';
@@ -15,13 +16,34 @@ class EnterPinModal extends StatefulWidget {
   State<EnterPinModal> createState() => _EnterPinModalState();
 }
 
-class _EnterPinModalState extends State<EnterPinModal> {
+class _EnterPinModalState extends State<EnterPinModal> with SingleTickerProviderStateMixin {
   String _pin = '';
   int _failedAttempts = 0;
   bool _isLocked = false;
   bool _isLoading = false;
   bool _obscurePin = true;
   String? _errorMessage;
+
+  late AnimationController _shakeController;
+  late Animation<double> _shakeAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _shakeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 380),
+    );
+    _shakeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _shakeController, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _shakeController.dispose();
+    super.dispose();
+  }
 
   void _onDigitPressed(String digit) async {
     if (_isLocked || _isLoading) return;
@@ -43,8 +65,11 @@ class _EnterPinModalState extends State<EnterPinModal> {
         if (!mounted) return;
 
         if (success) {
+          HapticFeedback.mediumImpact();
           Navigator.pop(context, true);
         } else {
+          HapticFeedback.heavyImpact();
+          _shakeController.forward(from: 0.0);
           setState(() {
             _isLoading = false;
             _failedAttempts++;
@@ -134,67 +159,77 @@ class _EnterPinModalState extends State<EnterPinModal> {
             const SizedBox(height: 20),
 
             if (!_isLocked) ...[
-              // PIN Dots / Digits Indicator with Peek Toggle
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const SizedBox(width: 40), // Balance the row
-                  Row(
-                    children: List.generate(4, (index) {
-                      final hasDigit = index < _pin.length;
-                      final digitChar = hasDigit ? _pin[index] : '';
+              // PIN Dots / Digits Indicator with Peek Toggle and Spring Shake
+              AnimatedBuilder(
+                animation: _shakeAnimation,
+                builder: (context, child) {
+                  final offset = math.sin(_shakeAnimation.value * math.pi * 6) * 12 * (1 - _shakeAnimation.value);
+                  return Transform.translate(
+                    offset: Offset(offset, 0),
+                    child: child,
+                  );
+                },
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const SizedBox(width: 40), // Balance the row
+                    Row(
+                      children: List.generate(4, (index) {
+                        final hasDigit = index < _pin.length;
+                        final digitChar = hasDigit ? _pin[index] : '';
 
-                      if (_obscurePin) {
-                        return AnimatedContainer(
-                          duration: const Duration(milliseconds: 150),
-                          margin: const EdgeInsets.symmetric(horizontal: 8),
-                          width: 18,
-                          height: 18,
+                        if (_obscurePin) {
+                          return AnimatedContainer(
+                            duration: const Duration(milliseconds: 150),
+                            margin: const EdgeInsets.symmetric(horizontal: 8),
+                            width: 18,
+                            height: 18,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: hasDigit ? AppColors.accent : Colors.transparent,
+                              border: Border.all(
+                                color: hasDigit ? AppColors.accent : AppColors.ink3,
+                                width: 2,
+                              ),
+                            ),
+                          );
+                        }
+
+                        return Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 6),
+                          width: 32,
+                          height: 40,
                           decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: hasDigit ? AppColors.accent : Colors.transparent,
+                            color: hasDigit ? AppColors.accentTint : AppColors.cardWhite,
+                            borderRadius: BorderRadius.circular(10),
                             border: Border.all(
-                              color: hasDigit ? AppColors.accent : AppColors.ink3,
-                              width: 2,
+                              color: hasDigit ? AppColors.accent : AppColors.border,
+                              width: 1.5,
+                            ),
+                          ),
+                          alignment: Alignment.center,
+                          child: Text(
+                            digitChar,
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.ink,
                             ),
                           ),
                         );
-                      }
-
-                      return Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 6),
-                        width: 32,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          color: hasDigit ? AppColors.accentTint : AppColors.cardWhite,
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
-                            color: hasDigit ? AppColors.accent : AppColors.border,
-                            width: 1.5,
-                          ),
-                        ),
-                        alignment: Alignment.center,
-                        child: Text(
-                          digitChar,
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
-                            color: AppColors.ink,
-                          ),
-                        ),
-                      );
-                    }),
-                  ),
-                  IconButton(
-                    onPressed: () => setState(() => _obscurePin = !_obscurePin),
-                    icon: Icon(
-                      _obscurePin ? Icons.visibility_outlined : Icons.visibility_off_outlined,
-                      size: 20,
-                      color: AppColors.ink2,
+                      }),
                     ),
-                    tooltip: _obscurePin ? 'Show PIN' : 'Hide PIN',
-                  ),
-                ],
+                    IconButton(
+                      onPressed: () => setState(() => _obscurePin = !_obscurePin),
+                      icon: Icon(
+                        _obscurePin ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                        size: 20,
+                        color: AppColors.ink2,
+                      ),
+                      tooltip: _obscurePin ? 'Show PIN' : 'Hide PIN',
+                    ),
+                  ],
+                ),
               ),
             ],
 

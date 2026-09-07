@@ -30,6 +30,7 @@ class ReviewScreen extends ConsumerWidget {
                   Expanded(
                     child: CardBox(
                       child: ListView.separated(
+                        physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
                         itemCount: chosen.length,
                         separatorBuilder: (_, _) => const Divider(color: AppColors.border, height: 1),
                         itemBuilder: (_, index) {

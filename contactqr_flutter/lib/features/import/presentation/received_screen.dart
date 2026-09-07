@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/header.dart';
@@ -78,7 +79,10 @@ class _ReceivedScreenState extends ConsumerState<ReceivedScreen> {
                             ),
                           ),
                           InkWell(
-                            onTap: () => receiverNotifier.deselectDuplicates(),
+                            onTap: () {
+                              HapticFeedback.selectionClick();
+                              receiverNotifier.deselectDuplicates();
+                            },
                             borderRadius: BorderRadius.circular(8),
                             child: Container(
                               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -125,6 +129,7 @@ class _ReceivedScreenState extends ConsumerState<ReceivedScreen> {
                           ),
                           TextButton(
                             onPressed: () {
+                              HapticFeedback.selectionClick();
                               if (allFilteredSelected) {
                                 receiverNotifier.clearAll();
                               } else {
@@ -154,6 +159,7 @@ class _ReceivedScreenState extends ConsumerState<ReceivedScreen> {
                             ),
                           )
                         : ListView.separated(
+                            physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
                             keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                             itemCount: filtered.length,
                             separatorBuilder: (_, _) => const Divider(height: 1, color: AppColors.border),
@@ -162,7 +168,10 @@ class _ReceivedScreenState extends ConsumerState<ReceivedScreen> {
                               return ContactRow(
                                 contact: contact,
                                 selected: selectedIds.contains(contact.id),
-                                onTap: () => receiverNotifier.toggleContact(contact.id),
+                                onTap: () {
+                                  HapticFeedback.selectionClick();
+                                  receiverNotifier.toggleContact(contact.id);
+                                },
                               );
                             },
                           ),
