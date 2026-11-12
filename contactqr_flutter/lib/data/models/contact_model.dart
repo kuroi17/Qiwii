@@ -7,6 +7,8 @@ class AppContact {
     this.email,
     this.organization,
     this.jobTitle,
+    this.secondaryPhone,
+    this.notes,
     this.isDuplicate = false,
   });
 
@@ -17,6 +19,8 @@ class AppContact {
   final String? email;
   final String? organization;
   final String? jobTitle;
+  final String? secondaryPhone;
+  final String? notes;
   final bool isDuplicate;
 
   AppContact copyWith({
@@ -27,6 +31,8 @@ class AppContact {
     String? email,
     String? organization,
     String? jobTitle,
+    String? secondaryPhone,
+    String? notes,
     bool? isDuplicate,
   }) {
     return AppContact(
@@ -37,7 +43,24 @@ class AppContact {
       email: email ?? this.email,
       organization: organization ?? this.organization,
       jobTitle: jobTitle ?? this.jobTitle,
+      secondaryPhone: secondaryPhone ?? this.secondaryPhone,
+      notes: notes ?? this.notes,
       isDuplicate: isDuplicate ?? this.isDuplicate,
+    );
+  }
+
+  /// Merges incoming contact information into this existing contact
+  AppContact mergeWith(AppContact incoming) {
+    return copyWith(
+      name: name.trim().isNotEmpty ? name : incoming.name,
+      phone: phone.trim().isNotEmpty ? phone : incoming.phone,
+      secondaryPhone: secondaryPhone ?? (incoming.phone != phone && incoming.phone.isNotEmpty ? incoming.phone : incoming.secondaryPhone),
+      email: email ?? incoming.email,
+      organization: organization ?? incoming.organization,
+      jobTitle: jobTitle ?? incoming.jobTitle,
+      notes: notes != null && incoming.notes != null
+          ? '$notes\n${incoming.notes}'
+          : (notes ?? incoming.notes),
     );
   }
 
@@ -49,6 +72,8 @@ class AppContact {
     if (email != null) 'email': email,
     if (organization != null) 'organization': organization,
     if (jobTitle != null) 'jobTitle': jobTitle,
+    if (secondaryPhone != null) 'secondaryPhone': secondaryPhone,
+    if (notes != null) 'notes': notes,
   };
 
   factory AppContact.fromJson(Map<String, dynamic> json) => AppContact(
@@ -59,6 +84,8 @@ class AppContact {
     email: json['email'] as String?,
     organization: json['organization'] as String?,
     jobTitle: json['jobTitle'] as String?,
+    secondaryPhone: json['secondaryPhone'] as String?,
+    notes: json['notes'] as String?,
   );
 
   static String generateInitials(String displayName) {

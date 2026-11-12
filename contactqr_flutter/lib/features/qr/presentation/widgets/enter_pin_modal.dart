@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 
@@ -8,9 +9,11 @@ class EnterPinModal extends StatefulWidget {
   const EnterPinModal({
     super.key,
     required this.onPinSubmitted,
+    this.sessionId,
   });
 
   final Future<bool> Function(String pin) onPinSubmitted;
+  final String? sessionId;
 
   @override
   State<EnterPinModal> createState() => _EnterPinModalState();
@@ -37,6 +40,27 @@ class _EnterPinModalState extends State<EnterPinModal> with SingleTickerProvider
     _shakeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(parent: _shakeController, curve: Curves.easeInOut),
     );
+    _checkLockoutState();
+  }
+
+  Future<void> _checkLockoutState() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final key = widget.sessionId ?? 'global_transfer';
+      final lockoutUntil = prefs.getInt('pin_lockout_until_$key') ?? 0;
+      final now = DateTime.now().millisecondsSinceEpoch;
+      if (lockoutUntil > now) {
+        final remainingMinutes = ((lockoutUntil - now) / 60000).ceil();
+        if (mounted) {
+          setState(() {
+            _isLocked = true;
+            _errorMessage = 'Too many failed attempts. Locked for $remainingMinutes min.';
+          });
+        }
+      } else {
+        _failedAttempts = prefs.getInt('pin_attempts_$key') ?? 0;
+      }
+    } catch (_) {}
   }
 
   @override
@@ -65,19 +89,35 @@ class _EnterPinModalState extends State<EnterPinModal> with SingleTickerProvider
         if (!mounted) return;
 
         if (success) {
+          try {
+            final prefs = await SharedPreferences.getInstance();
+            final key = widget.sessionId ?? 'global_transfer';
+            await prefs.remove('pin_attempts_$key');
+            await prefs.remove('pin_lockout_until_$key');
+          } catch (_) {}
+          if (!mounted) return;
           HapticFeedback.mediumImpact();
           Navigator.pop(context, true);
         } else {
           HapticFeedback.heavyImpact();
           _shakeController.forward(from: 0.0);
+          final prefs = await SharedPreferences.getInstance();
+          final key = widget.sessionId ?? 'global_transfer';
+          final newAttempts = _failedAttempts + 1;
+          await prefs.setInt('pin_attempts_$key', newAttempts);
+
+          if (!mounted) return;
+
           setState(() {
             _isLoading = false;
-            _failedAttempts++;
+            _failedAttempts = newAttempts;
             _pin = '';
 
             if (_failedAttempts >= 5) {
               _isLocked = true;
-              _errorMessage = 'Oops! Too many failed attempts. Try again next time.';
+              final lockoutUntil = DateTime.now().add(const Duration(minutes: 5)).millisecondsSinceEpoch;
+              prefs.setInt('pin_lockout_until_$key', lockoutUntil);
+              _errorMessage = 'Oops! Too many failed attempts. Locked for 5 minutes.';
             } else {
               _errorMessage =
                   'Incorrect PIN. (${5 - _failedAttempts} attempt${5 - _failedAttempts == 1 ? '' : 's'} remaining)';

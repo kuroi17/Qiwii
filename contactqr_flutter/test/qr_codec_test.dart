@@ -113,6 +113,73 @@ void main() {
       expect(() => QrCodec.decode('{"app":"otherapp"}'), throwsA(isA<QrProtocolException>()));
     });
 
+    test('correctly handles delimiter characters, newlines, and secondary phones', () {
+      const contacts = [
+        AppContact(
+          id: '1',
+          name: 'Jane | Senior Dev\nSpecialist',
+          phone: '+1 555 1234',
+          email: 'jane|dev@corp.com',
+          organization: 'Acme | Labs',
+          jobTitle: 'Lead | Architect',
+          secondaryPhone: '+1 555 5678',
+          notes: 'Met at conference.\nGreat contact!',
+          initials: 'JS',
+        ),
+      ];
+
+      final encoded = QrCodec.encodeDirectContacts(contacts);
+      final session = QrCodec.decode(encoded);
+      final unpacked = QrCodec.decodeDirectPayload(session.directPayload);
+
+      expect(unpacked.length, 1);
+      expect(unpacked[0].name, 'Jane | Senior Dev\nSpecialist');
+      expect(unpacked[0].phone, '+1 555 1234');
+      expect(unpacked[0].email, 'jane|dev@corp.com');
+      expect(unpacked[0].organization, 'Acme | Labs');
+      expect(unpacked[0].jobTitle, 'Lead | Architect');
+      expect(unpacked[0].secondaryPhone, '+1 555 5678');
+      expect(unpacked[0].notes, 'Met at conference.\nGreat contact!');
+    });
+
+    test('creates and parses multi-frame animated QR chunks cleanly', () {
+      final manyContacts = List.generate(
+        35,
+        (i) => AppContact(
+          id: 'id_$i',
+          name: 'Colleague Number $i',
+          phone: '+63 917 555 00$i',
+          email: 'colleague_$i@enterprise.corp',
+          organization: 'MegaCorp International $i',
+          jobTitle: 'Senior Vice President of Engineering $i',
+          initials: 'CN',
+        ),
+      );
+
+      final directUrl = QrCodec.encodeDirectContacts(manyContacts);
+      final session = QrCodec.decode(directUrl);
+
+      final frames = QrCodec.createMultiFrameQrs(session, maxChunkSize: 300);
+      expect(frames.length > 1, true);
+
+      final Map<int, String> collectedChunks = {};
+      int? expectedTotal;
+
+      for (final frame in frames) {
+        expect(QrCodec.isMultiFrame(frame), true);
+        final part = QrCodec.parseMultiFrame(frame);
+        expectedTotal = part.total;
+        collectedChunks[part.part] = part.chunk;
+      }
+
+      expect(collectedChunks.length, expectedTotal);
+      final assembled = List.generate(expectedTotal!, (i) => collectedChunks[i + 1]!).join();
+      final unpacked = QrCodec.decodeDirectPayload(assembled);
+      expect(unpacked.length, 35);
+      expect(unpacked[0].name, 'Colleague Number 0');
+      expect(unpacked[34].name, 'Colleague Number 34');
+    });
+
     test('decodes legacy demo format for testing', () {
       final session = QrCodec.decode('contactqr://session/demo-5');
       expect(session.sessionId, 'demo-5');

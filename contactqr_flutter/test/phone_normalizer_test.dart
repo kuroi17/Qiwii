@@ -42,6 +42,14 @@ void main() {
       // Distinct contact
       const candidate3 = AppContact(id: '5', name: 'Liam Park', phone: '+1 408 555 0121', initials: 'LP', email: 'liam@park.io');
       expect(PhoneNormalizer.isDuplicateContact(candidate3, existingList), false);
+
+      // Same first name but different phone number should NOT be considered duplicate
+      const candidate4 = AppContact(id: '6', name: 'John', phone: '+1 555 999 8888', initials: 'J');
+      expect(PhoneNormalizer.isDuplicateContact(candidate4, existingList), false);
+
+      // Exact full name match without conflicting phone/email is a duplicate
+      const candidate5 = AppContact(id: '7', name: 'Maria Santos', phone: '', initials: 'MS');
+      expect(PhoneNormalizer.isDuplicateContact(candidate5, existingList), true);
     });
   });
 }

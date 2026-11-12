@@ -57,21 +57,54 @@ class PhoneNormalizer {
   }
 
   /// Checks if a contact already exists within a target contact list.
+  /// Prevents false positives on common single names (e.g. "Alex") by requiring
+  /// matching phone numbers, matching emails, or full matching names where phones do not conflict.
   static bool isDuplicateContact(AppContact candidate, List<AppContact> targetList) {
+    final candPhone = normalize(candidate.phone);
+    final candEmail = candidate.email?.trim().toLowerCase();
+    final candName = candidate.name.trim().toLowerCase();
+
     for (final existing in targetList) {
-      // 1. Phone number match
-      if (areNumbersEqual(candidate.phone, existing.phone)) {
+      final existPhone = normalize(existing.phone);
+      final existEmail = existing.email?.trim().toLowerCase();
+      final existName = existing.name.trim().toLowerCase();
+
+      // 1. Phone number match (strongest signal)
+      if (candPhone.isNotEmpty && existPhone.isNotEmpty && areNumbersEqual(candidate.phone, existing.phone)) {
         return true;
       }
-      // 2. Email match
-      if (areEmailsEqual(candidate.email, existing.email)) {
+
+      // 2. Email match (strong signal)
+      if (candEmail != null && candEmail.isNotEmpty &&
+          existEmail != null && existEmail.isNotEmpty &&
+          areEmailsEqual(candidate.email, existing.email)) {
         return true;
       }
-      // 3. Exact normalized name match
-      if (candidate.name.trim().isNotEmpty &&
-          existing.name.trim().isNotEmpty &&
-          candidate.name.trim().toLowerCase() == existing.name.trim().toLowerCase()) {
-        return true;
+
+      // 3. If both parties have phone numbers and they do NOT match, they are different people!
+      if (candPhone.isNotEmpty && existPhone.isNotEmpty) {
+        continue;
+      }
+
+      // 4. If both parties have emails and they do NOT match, they are different people!
+      if (candEmail != null && candEmail.isNotEmpty && existEmail != null && existEmail.isNotEmpty) {
+        continue;
+      }
+
+      // 5. Name match (only if neither phone nor email conflicts):
+      if (candName.isNotEmpty && existName.isNotEmpty && candName == existName) {
+        // Require at least two words (e.g. "John Smith") to avoid false positives on common first names
+        final nameParts = candName.split(RegExp(r'\s+'));
+        if (nameParts.length >= 2) {
+          return true;
+        }
+        // If single-word name, only match if organization also matches and is non-empty
+        if (candidate.organization != null &&
+            existing.organization != null &&
+            candidate.organization!.trim().isNotEmpty &&
+            candidate.organization!.trim().toLowerCase() == existing.organization!.trim().toLowerCase()) {
+          return true;
+        }
       }
     }
     return false;

@@ -39,6 +39,9 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> with SingleTicker
   String? _lastScannedPayload;
   DateTime? _lastScannedTime;
 
+  final Map<int, String> _multiFrameChunks = {};
+  String? _multiFrameSessionId;
+
   @override
   void initState() {
     super.initState();
@@ -261,6 +264,56 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> with SingleTicker
 
 
   Future<void> _processQrString(String rawData) async {
+    // 1. Handle Multi-Frame / Animated QR sequences
+    if (QrCodec.isMultiFrame(rawData)) {
+      try {
+        final part = QrCodec.parseMultiFrame(rawData);
+        if (_multiFrameSessionId != null && _multiFrameSessionId != part.sessionId) {
+          _multiFrameChunks.clear();
+        }
+        _multiFrameSessionId = part.sessionId;
+        _multiFrameChunks[part.part] = part.chunk;
+
+        HapticFeedback.selectionClick();
+
+        if (_multiFrameChunks.length < part.total) {
+          final percent = (_multiFrameChunks.length * 100 / part.total).round();
+          ScaffoldMessenger.of(context).clearSnackBars();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Scanned frame ${part.part} of ${part.total} ($percent%) - keep pointing'),
+              duration: const Duration(seconds: 1),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+          return;
+        }
+
+        // All frames collected! Assemble complete payload
+        HapticFeedback.mediumImpact();
+        final assembledPayload = List.generate(part.total, (i) => _multiFrameChunks[i + 1] ?? '').join();
+        _multiFrameChunks.clear();
+
+        final assembledSession = TransferSession(
+          sessionId: part.sessionId,
+          protocolVersion: part.version,
+          mode: TransferMode.direct,
+          contactCount: 0,
+          createdAt: DateTime.now(),
+          expiresAt: DateTime.now().add(const Duration(minutes: 60)),
+          directPayload: assembledPayload,
+          isPinProtected: part.salt != null && part.salt!.isNotEmpty,
+          pinSalt: part.salt,
+        );
+
+        return await _processSession(assembledSession);
+      } catch (e) {
+        _showErrorSnackBar('Corrupted multi-frame QR data: $e');
+        _resetScanner();
+        return;
+      }
+    }
+
     setState(() {
       _isProcessing = true;
     });
@@ -269,19 +322,49 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> with SingleTicker
 
     try {
       final session = QrCodec.decode(rawData);
+      await _processSession(session);
+    } on QrExpiredException {
+      _showErrorSnackBar('This transfer QR code has expired. Please ask the sender to generate a new code.');
+      _resetScanner();
+    } on QrProtocolException catch (e) {
+      _showErrorSnackBar(e.message);
+      _resetScanner();
+    } on NetworkTransferException catch (e) {
+      _resetScanner();
+      if (mounted) {
+        TransferErrorDialog.show(
+          context,
+          title: 'Connection Failed',
+          message: e.message,
+          primaryActionText: 'Try Scanning Again',
+          onPrimaryAction: () => _resetScanner(),
+        );
+      }
+    } catch (e) {
+      _resetScanner();
+      _showErrorSnackBar('Transfer failed: $e');
+    }
+  }
 
+  Future<void> _processSession(TransferSession session) async {
+    setState(() {
+      _isProcessing = true;
+    });
+
+    try {
       List<AppContact> contacts = [];
 
-      if (session.mode == TransferMode.direct) {
-        if (session.isPinProtected) {
-          // Prompt for 4-digit PIN with 5-attempt limit
-          final unlocked = await showModalBottomSheet<bool>(
-            context: context,
-            isScrollControlled: true,
-            backgroundColor: Colors.transparent,
-            builder: (ctx) => EnterPinModal(
-              onPinSubmitted: (pin) async {
-                try {
+      // PIN Protection enforced for BOTH Direct and Local Network modes
+      if (session.isPinProtected) {
+        final unlocked = await showModalBottomSheet<bool>(
+          context: context,
+          isScrollControlled: true,
+          backgroundColor: Colors.transparent,
+          builder: (ctx) => EnterPinModal(
+            sessionId: session.sessionId,
+            onPinSubmitted: (pin) async {
+              try {
+                if (session.mode == TransferMode.direct) {
                   final decoded = QrCodec.decodeDirectPayload(
                     session.directPayload,
                     pin: pin,
@@ -292,21 +375,29 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> with SingleTicker
                     return true;
                   }
                   return false;
-                } catch (e) {
-                  return false;
+                } else {
+                  return true;
                 }
-              },
-            ),
-          );
+              } catch (e) {
+                return false;
+              }
+            },
+          ),
+        );
 
-          if (unlocked != true) {
-            _resetScanner();
-            return;
+        if (unlocked != true) {
+          _resetScanner();
+          return;
+        }
+      }
+
+      if (session.mode == TransferMode.direct) {
+        if (!session.isPinProtected) {
+          if (session.directPayload != null && session.directPayload!.isNotEmpty) {
+            contacts = QrCodec.decodeDirectPayload(session.directPayload);
+          } else {
+            contacts = demoContacts.take(session.contactCount > 0 ? session.contactCount : 6).toList();
           }
-        } else if (session.directPayload != null && session.directPayload!.isNotEmpty) {
-          contacts = QrCodec.decodeDirectPayload(session.directPayload);
-        } else {
-          contacts = demoContacts.take(session.contactCount > 0 ? session.contactCount : 6).toList();
         }
       } else {
         // TIER 2: Bulk Local Network Transfer mode

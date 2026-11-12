@@ -158,6 +158,70 @@ class ContactRepository {
     }
   }
 
+  /// Merges incoming contact information into an existing native contact.
+  Future<bool> mergeContact(AppContact incoming) async {
+    if (kIsWeb || isMock) {
+      return true;
+    }
+
+    try {
+      final hasPermission = await requestWritePermission();
+      if (!hasPermission) {
+        throw Exception('CONTACTS_PERMISSION_DENIED');
+      }
+
+      final existingList = await fc.FlutterContacts.getAll(
+        properties: {
+          fc.ContactProperty.name,
+          fc.ContactProperty.phone,
+          fc.ContactProperty.email,
+          fc.ContactProperty.organization,
+        },
+      );
+
+      // Find matching contact
+      fc.Contact? match;
+      for (final c in existingList) {
+        final phones = c.phones.map((p) => p.number).toList();
+        final emails = c.emails.map((e) => e.address).toList();
+        if (phones.any((p) => PhoneNormalizer.areNumbersEqual(incoming.phone, p)) ||
+            (incoming.email != null && emails.any((e) => PhoneNormalizer.areEmailsEqual(incoming.email, e)))) {
+          match = c;
+          break;
+        }
+      }
+
+      if (match == null) {
+        return await insertContact(incoming);
+      }
+
+      // Add phone if not present
+      final currentNumbers = match.phones.map((p) => PhoneNormalizer.normalize(p.number)).toSet();
+      if (incoming.phone.isNotEmpty && !currentNumbers.contains(PhoneNormalizer.normalize(incoming.phone))) {
+        match.phones.add(fc.Phone(number: incoming.phone));
+      }
+
+      // Add email if not present
+      final currentEmails = match.emails.map((e) => e.address.toLowerCase().trim()).toSet();
+      if (incoming.email != null &&
+          incoming.email!.isNotEmpty &&
+          !currentEmails.contains(incoming.email!.toLowerCase().trim())) {
+        match.emails.add(fc.Email(address: incoming.email!));
+      }
+
+      // Add organization if empty
+      if (match.organizations.isEmpty && incoming.organization != null && incoming.organization!.isNotEmpty) {
+        match.organizations.add(fc.Organization(name: incoming.organization, jobTitle: incoming.jobTitle));
+      }
+
+      await fc.FlutterContacts.update(match);
+      return true;
+    } catch (e) {
+      debugPrint('Error merging contact: $e');
+      return false;
+    }
+  }
+
   /// Batch inserts contacts with progress feedback.
   Future<Map<String, int>> batchInsertContacts(
     List<AppContact> contacts, {

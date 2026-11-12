@@ -25,6 +25,7 @@ Thumbs.db
 **/coverage/
 
 # Android Studio / Xcode build artifacts
+*.apk
 **/android/app/debug/
 **/android/app/profile/
 **/android/app/release/

@@ -7,8 +7,6 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
-import '../../../core/utils/crypto_utils.dart';
-import '../../../core/utils/network_helper.dart';
 import '../../../core/utils/qr_codec.dart';
 import '../../../core/widgets/header.dart';
 import '../../../core/widgets/shell.dart';
@@ -36,8 +34,13 @@ class QrScreen extends ConsumerStatefulWidget {
 class _QrScreenState extends ConsumerState<QrScreen> {
   late DateTime _expiresAt;
   Timer? _timer;
+  Timer? _frameTimer;
   Duration _remaining = const Duration(minutes: 15);
   String? _encodedQrData;
+  List<String> _qrFrames = [];
+  int _currentFrameIndex = 0;
+  bool _isFrameTimerPaused = false;
+  String? _pin;
   bool _isExpired = false;
   TransferStatus _transferStatus = TransferStatus.waiting;
 
@@ -63,56 +66,30 @@ class _QrScreenState extends ConsumerState<QrScreen> {
         ? contactsToTransfer
         : demoContacts.take(widget.count).toList();
 
-    // TIER 1: Direct QR mode (now supports up to 30 contacts seamlessly via minification)
-    if (actualContacts.length <= 30) {
-      final qrString = QrCodec.encodeDirectContacts(
-        actualContacts,
-        timeoutMinutes: 15,
-      );
+    // 100% Offline Direct QR mode (Single or Multi-Frame Animated QR)
+    final directUrl = QrCodec.encodeDirectContacts(
+      actualContacts,
+      timeoutMinutes: 15,
+      pin: _pin,
+    );
 
-      setState(() {
-        _encodedQrData = qrString;
-      });
-    } else {
-      // TIER 2: Bulk local network transfer mode for large contact books (>30 contacts)
-      final sessionId = 'p2p-${DateTime.now().millisecondsSinceEpoch}';
-      final sessionToken = CryptoUtils.generateRandomToken(length: 16);
-      final encryptionKey = CryptoUtils.generateSessionKey();
-      final localIp = await NetworkHelper.getLocalIpAddress();
+    final session = QrCodec.decode(directUrl);
+    final frames = QrCodec.createMultiFrameQrs(session, maxChunkSize: 500);
 
-      _server = LocalTransferServer(
-        contacts: actualContacts,
-        sessionId: sessionId,
-        sessionToken: sessionToken,
-        encryptionKey: encryptionKey,
-        onStatusChanged: (status, msg) {
-          if (mounted) {
-            setState(() {
-              _transferStatus = status;
-            });
-          }
-        },
-      );
+    setState(() {
+      _qrFrames = frames;
+      _currentFrameIndex = 0;
+      _encodedQrData = frames.first;
+    });
 
-      final port = await _server!.start();
-
-      final session = TransferSession(
-        sessionId: sessionId,
-        protocolVersion: QrCodec.currentVersion,
-        mode: TransferMode.localNetwork,
-        contactCount: actualContacts.length,
-        createdAt: DateTime.now(),
-        expiresAt: _expiresAt,
-        host: localIp,
-        port: port,
-        token: sessionToken,
-        encryptionKey: encryptionKey,
-      );
-
-      final qrString = QrCodec.encodeSession(session);
-
-      setState(() {
-        _encodedQrData = qrString;
+    _frameTimer?.cancel();
+    if (frames.length > 1) {
+      _frameTimer = Timer.periodic(const Duration(milliseconds: 400), (t) {
+        if (!mounted || _isFrameTimerPaused) return;
+        setState(() {
+          _currentFrameIndex = (_currentFrameIndex + 1) % _qrFrames.length;
+          _encodedQrData = _qrFrames[_currentFrameIndex];
+        });
       });
     }
 
@@ -127,6 +104,7 @@ class _QrScreenState extends ConsumerState<QrScreen> {
       final now = DateTime.now();
       if (now.isAfter(_expiresAt)) {
         timer.cancel();
+        _frameTimer?.cancel();
         _server?.stop();
         setState(() {
           _isExpired = true;
@@ -139,6 +117,43 @@ class _QrScreenState extends ConsumerState<QrScreen> {
         });
       }
     });
+  }
+
+  void _toggleOnScreenPin() async {
+    HapticFeedback.selectionClick();
+    if (_pin != null) {
+      setState(() {
+        _pin = null;
+      });
+      _startSession();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('PIN protection removed from on-screen QR'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => SetPinModal(
+        onPinConfirmed: (enteredPin) {
+          setState(() {
+            _pin = enteredPin;
+          });
+          _startSession();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('QR code is now protected with PIN $enteredPin'),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        },
+      ),
+    );
   }
 
   void _onShareWithPinPressed() {
@@ -378,6 +393,7 @@ class _QrScreenState extends ConsumerState<QrScreen> {
   @override
   void dispose() {
     _timer?.cancel();
+    _frameTimer?.cancel();
     _server?.stop();
     super.dispose();
   }
@@ -420,12 +436,12 @@ class _QrScreenState extends ConsumerState<QrScreen> {
                         ? 'TRANSFER EXPIRED'
                         : isSuccess
                             ? 'TRANSFER COMPLETE'
-                            : _transferStatus == TransferStatus.transferring
-                                ? 'SENDING DATA'
-                                : 'READY TO CONNECT',
+                            : _qrFrames.length > 1
+                                ? 'ANIMATED QR - FRAME ${_currentFrameIndex + 1}/${_qrFrames.length}'
+                                : 'READY TO SCAN',
                     active: !_isExpired,
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 16),
 
                   // QR White Card on dark background
                   Center(
@@ -484,7 +500,7 @@ class _QrScreenState extends ConsumerState<QrScreen> {
                                         data: _encodedQrData!,
                                         size: 215,
                                         version: QrVersions.auto,
-                                        errorCorrectionLevel: QrErrorCorrectLevel.M,
+                                        errorCorrectionLevel: QrErrorCorrectLevel.L,
                                         padding: const EdgeInsets.all(8),
                                         backgroundColor: Colors.white,
                                         eyeStyle: const QrEyeStyle(
@@ -500,33 +516,83 @@ class _QrScreenState extends ConsumerState<QrScreen> {
                     ),
                   ),
 
-                  // Same-Network Wi-Fi / Hotspot Tip for Tier 2 transfers (>30 contacts)
-                  if (widget.count > 30 && !_isExpired && !isSuccess) ...[
-                    const SizedBox(height: 14),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: AppColors.darkSurface,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: AppColors.darkBorder),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: const [
-                          Icon(Icons.wifi_rounded, color: AppColors.accent, size: 16),
-                          SizedBox(width: 8),
-                          Text(
-                            'Both devices must be on same Wi-Fi / Hotspot',
-                            style: TextStyle(
-                              color: AppColors.darkSubtitle,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
-                            ),
+                  const SizedBox(height: 12),
+
+                  // Multi-frame playback controls (if dataset requires multiple frames)
+                  if (_qrFrames.length > 1 && !_isExpired && !isSuccess) ...[
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: AppColors.darkSurface,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: AppColors.darkBorder),
                           ),
-                        ],
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.flip_camera_android_rounded, size: 14, color: AppColors.accent),
+                              const SizedBox(width: 6),
+                              Text(
+                                'Looping ${_currentFrameIndex + 1} of ${_qrFrames.length}',
+                                style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        IconButton(
+                          icon: Icon(
+                            _isFrameTimerPaused ? Icons.play_arrow_rounded : Icons.pause_rounded,
+                            color: AppColors.accent,
+                            size: 20,
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              _isFrameTimerPaused = !_isFrameTimerPaused;
+                            });
+                          },
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                  ],
+
+                  // On-Screen PIN Protection Pill Button
+                  if (!_isExpired && !isSuccess)
+                    InkWell(
+                      onTap: _toggleOnScreenPin,
+                      borderRadius: BorderRadius.circular(14),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: _pin != null ? AppColors.accent.withValues(alpha: 0.15) : AppColors.darkSurface,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: _pin != null ? AppColors.accent : AppColors.darkBorder),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              _pin != null ? Icons.lock_rounded : Icons.lock_outline_rounded,
+                              size: 15,
+                              color: _pin != null ? AppColors.accent : AppColors.darkSubtitle,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              _pin != null ? 'PIN Protected ($_pin) - Tap to remove' : 'Add PIN to on-screen QR',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: _pin != null ? AppColors.accent : AppColors.darkSubtitle,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ],
 
                   // Progress bar countdown
                   if (!_isExpired && !isSuccess) ...[

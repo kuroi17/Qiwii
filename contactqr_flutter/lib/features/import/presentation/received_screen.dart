@@ -78,28 +78,73 @@ class _ReceivedScreenState extends ConsumerState<ReceivedScreen> {
                               ),
                             ),
                           ),
-                          InkWell(
-                            onTap: () {
-                              HapticFeedback.selectionClick();
-                              receiverNotifier.deselectDuplicates();
-                            },
-                            borderRadius: BorderRadius.circular(8),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                              decoration: BoxDecoration(
-                                color: AppColors.cardWhite,
+                          Row(
+                            children: [
+                              InkWell(
+                                onTap: () {
+                                  HapticFeedback.selectionClick();
+                                  receiverNotifier.setDuplicateHandling(DuplicateHandling.merge);
+                                  ScaffoldMessenger.of(context).clearSnackBars();
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Duplicates will merge into existing contacts'),
+                                      duration: Duration(seconds: 2),
+                                      behavior: SnackBarBehavior.floating,
+                                    ),
+                                  );
+                                },
                                 borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: AppColors.accent.withValues(alpha: 0.3)),
-                              ),
-                              child: const Text(
-                                'Skip All',
-                                style: TextStyle(
-                                  color: AppColors.accentDark,
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 12.5,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: receiverState.duplicateHandling == DuplicateHandling.merge
+                                        ? AppColors.accent
+                                        : AppColors.cardWhite,
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: AppColors.accent.withValues(alpha: 0.3)),
+                                  ),
+                                  child: Text(
+                                    'Merge',
+                                    style: TextStyle(
+                                      color: receiverState.duplicateHandling == DuplicateHandling.merge
+                                          ? Colors.white
+                                          : AppColors.accentDark,
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 12.5,
+                                    ),
+                                  ),
                                 ),
                               ),
-                            ),
+                              const SizedBox(width: 8),
+                              InkWell(
+                                onTap: () {
+                                  HapticFeedback.selectionClick();
+                                  receiverNotifier.setDuplicateHandling(DuplicateHandling.skip);
+                                  receiverNotifier.deselectDuplicates();
+                                },
+                                borderRadius: BorderRadius.circular(8),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: receiverState.duplicateHandling == DuplicateHandling.skip
+                                        ? AppColors.accent
+                                        : AppColors.cardWhite,
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: AppColors.accent.withValues(alpha: 0.3)),
+                                  ),
+                                  child: Text(
+                                    'Skip',
+                                    style: TextStyle(
+                                      color: receiverState.duplicateHandling == DuplicateHandling.skip
+                                          ? Colors.white
+                                          : AppColors.accentDark,
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 12.5,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),

@@ -4,9 +4,11 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../../core/utils/crypto_utils.dart';
 import '../../../core/utils/qr_codec.dart';
 import '../../../core/widgets/shell.dart';
 import '../../../data/models/transfer_session_model.dart';
@@ -27,6 +29,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
   late AppLinks _appLinks;
   StreamSubscription<Uri>? _linkSubscription;
   String? _lastCheckedClipboard;
+  bool _isHandlingIncomingLink = false;
 
   @override
   void initState() {
@@ -72,20 +75,34 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
         uriString.contains('github.io') ||
         uriString.startsWith('qiwii://') ||
         uriString.startsWith('contactqr://')) {
+      _isHandlingIncomingLink = true;
       Navigator.push(
         context,
         MaterialPageRoute(
           builder: (context) => ScannerScreen(initialLink: uriString),
         ),
-      );
+      ).then((_) {
+        if (mounted) {
+          setState(() {
+            _isHandlingIncomingLink = false;
+          });
+        }
+      });
     }
   }
 
   Future<void> _checkClipboardForTransfer() async {
+    if (_isHandlingIncomingLink) return;
+
     try {
       final clipboardData = await Clipboard.getData(Clipboard.kTextPlain);
       final text = clipboardData?.text?.trim();
       if (text == null || text.isEmpty || text == _lastCheckedClipboard) return;
+
+      final prefs = await SharedPreferences.getInstance();
+      final lastHandledHash = prefs.getString('last_handled_clipboard_hash');
+      final currentHash = CryptoUtils.sha256Hash(text);
+      if (currentHash == lastHandledHash) return;
 
       if (text.contains('1~') ||
           text.contains('qiwii.app/t') ||
@@ -96,15 +113,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
         try {
           final session = QrCodec.decode(text);
           _lastCheckedClipboard = text;
-          if (mounted) {
-            _showClipboardDetectedModal(text, session);
+          if (mounted && !_isHandlingIncomingLink) {
+            _showClipboardDetectedModal(text, session, currentHash);
           }
         } catch (_) {}
       }
     } catch (_) {}
   }
 
-  void _showClipboardDetectedModal(String rawText, TransferSession session) {
+  void _showClipboardDetectedModal(String rawText, TransferSession session, String contentHash) {
     showModalBottomSheet(
       context: context,
       backgroundColor: AppColors.canvas,
@@ -161,14 +178,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => ScannerScreen(initialLink: rawText),
-                    ),
-                  );
+                onPressed: () async {
+                  final prefs = await SharedPreferences.getInstance();
+                  await prefs.setString('last_handled_clipboard_hash', contentHash);
+                  if (ctx.mounted) {
+                    Navigator.pop(ctx);
+                  }
+                  if (mounted) {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => ScannerScreen(initialLink: rawText),
+                      ),
+                    );
+                  }
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.accent,
@@ -182,7 +205,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
           ],
         ),
       ),
-    );
+    ).then((_) async {
+      // Mark as handled even if dismissed so it does not annoy user again
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('last_handled_clipboard_hash', contentHash);
+    });
   }
 
   @override
