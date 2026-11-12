@@ -31,3 +31,14 @@ Thumbs.db
 **/android/app/release/
 **/ios/Pods/
 **/ios/.symlinks/
+
+# Internal Documentation & Notes
+APPLE.md
+CODEBASE_AUDIT.md
+DESIGN.md
+ISSUES.md
+PHASES.md
+PRD.md
+contactqr_flutter/design.md
+contactqr_flutter/todo.md
+
