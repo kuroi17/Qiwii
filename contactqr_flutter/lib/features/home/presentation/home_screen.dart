@@ -315,7 +315,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
                               HapticFeedback.selectionClick();
                               if (value == 'feedback') {
                                 final uri = Uri.parse(
-                                  'https://github.com/kuroi17/Qiwii-Easy-Contact-Share-QR/issues',
+                                  'https://github.com/kuroi17/Qiwii/issues',
                                 );
                                 try {
                                   await launchUrl(uri, mode: LaunchMode.externalApplication);

@@ -16,7 +16,7 @@ A privacy-first, offline-capable mobile utility built to transfer contacts insta
 [![Security](https://img.shields.io/badge/Security-AES_GCM_256_+_PBKDF2-blue?style=flat-square)](./PRIVACY.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)](./LICENSE)
 
-[Download APK](https://github.com/kuroi17/Qiwii-Easy-Contact-Share-QR/releases) | [Web Bridge](https://kuroi17.github.io/Qiwii/) | [Privacy Policy](./PRIVACY.md)
+[Download APK](https://github.com/kuroi17/Qiwii/releases) | [Web Bridge](https://kuroi17.github.io/Qiwii/) | [Privacy Policy](./PRIVACY.md)
 
 </div>
 
@@ -106,8 +106,8 @@ flutter doctor
 1. **Clone the repository:**
 
    ```bash
-   git clone https://github.com/kuroi17/Qiwii-Easy-Contact-Share-QR.git
-   cd Qiwii-Easy-Contact-Share-QR/contactqr_flutter
+   git clone https://github.com/kuroi17/Qiwii.git
+   cd Qiwii/contactqr_flutter
    ```
 
 2. **Install project dependencies:**
