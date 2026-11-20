@@ -50,5 +50,40 @@ void main() {
       expect(state.savedContacts.length, 2);
       expect(state.skippedContacts.length, 1);
     });
+
+    test('applies SharePrivacyLevel filters properly to contact fields', () {
+      const fullContact = AppContact(
+        id: '1',
+        name: 'Alex Cruz',
+        phone: '+639171234567',
+        initials: 'AC',
+        email: 'alex@example.com',
+        organization: 'Acme Corp',
+        jobTitle: 'Developer',
+        secondaryPhone: '+639189876543',
+        notes: 'Secret VIP personal note',
+      );
+
+      final full = fullContact.applyPrivacy(SharePrivacyLevel.full);
+      expect(full.secondaryPhone, '+639189876543');
+      expect(full.notes, 'Secret VIP personal note');
+      expect(full.email, 'alex@example.com');
+
+      final work = fullContact.applyPrivacy(SharePrivacyLevel.work);
+      expect(work.email, 'alex@example.com');
+      expect(work.organization, 'Acme Corp');
+      expect(work.jobTitle, 'Developer');
+      expect(work.secondaryPhone, isNull);
+      expect(work.notes, isNull);
+
+      final phoneOnly = fullContact.applyPrivacy(SharePrivacyLevel.phoneOnly);
+      expect(phoneOnly.name, 'Alex Cruz');
+      expect(phoneOnly.phone, '+639171234567');
+      expect(phoneOnly.email, isNull);
+      expect(phoneOnly.organization, isNull);
+      expect(phoneOnly.jobTitle, isNull);
+      expect(phoneOnly.secondaryPhone, isNull);
+      expect(phoneOnly.notes, isNull);
+    });
   });
 }

@@ -1,0 +1,17 @@
+{
+  "name": "Qiwii • Easy Contact Share",
+  "short_name": "Qiwii",
+  "description": "Fast, private, and offline-capable contact sharing with zero cloud storage.",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#FAF1E8",
+  "theme_color": "#FAF1E8",
+  "icons": [
+    {
+      "src": "QiwiiLogo.png",
+      "sizes": "192x192 512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

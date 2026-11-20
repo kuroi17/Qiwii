@@ -1,3 +1,9 @@
+enum SharePrivacyLevel {
+  full,
+  work,
+  phoneOnly,
+}
+
 class AppContact {
   const AppContact({
     required this.id,
@@ -47,6 +53,35 @@ class AppContact {
       notes: notes ?? this.notes,
       isDuplicate: isDuplicate ?? this.isDuplicate,
     );
+  }
+
+  /// Applies a privacy filter to exclude sensitive fields
+  AppContact applyPrivacy(SharePrivacyLevel level) {
+    switch (level) {
+      case SharePrivacyLevel.full:
+        return this;
+      case SharePrivacyLevel.work:
+        return AppContact(
+          id: id,
+          name: name,
+          phone: phone,
+          initials: initials,
+          email: email,
+          organization: organization,
+          jobTitle: jobTitle,
+          secondaryPhone: null,
+          notes: null,
+          isDuplicate: isDuplicate,
+        );
+      case SharePrivacyLevel.phoneOnly:
+        return AppContact(
+          id: id,
+          name: name,
+          phone: phone,
+          initials: initials,
+          isDuplicate: isDuplicate,
+        );
+    }
   }
 
   /// Merges incoming contact information into this existing contact

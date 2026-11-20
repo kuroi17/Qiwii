@@ -41,6 +41,7 @@ class _QrScreenState extends ConsumerState<QrScreen> {
   int _currentFrameIndex = 0;
   bool _isFrameTimerPaused = false;
   String? _pin;
+  SharePrivacyLevel _privacyLevel = SharePrivacyLevel.full;
   bool _isExpired = false;
   TransferStatus _transferStatus = TransferStatus.waiting;
 
@@ -58,13 +59,15 @@ class _QrScreenState extends ConsumerState<QrScreen> {
     _isExpired = false;
     _transferStatus = TransferStatus.waiting;
 
-    // Fetch contacts to transfer
+    // Fetch contacts to transfer and apply selected privacy filter
     final contactsToTransfer = widget.selectedContacts ??
         ref.read(senderProvider).selectedContacts;
 
-    final actualContacts = contactsToTransfer.isNotEmpty
+    final baseContacts = contactsToTransfer.isNotEmpty
         ? contactsToTransfer
         : demoContacts.take(widget.count).toList();
+
+    final actualContacts = baseContacts.map((c) => c.applyPrivacy(_privacyLevel)).toList();
 
     // 100% Offline Direct QR mode (Single or Multi-Frame Animated QR)
     final directUrl = QrCodec.encodeDirectContacts(
@@ -594,6 +597,40 @@ class _QrScreenState extends ConsumerState<QrScreen> {
                       ),
                     ),
 
+                  // Privacy Level Selector (Selective Field Filtering)
+                  if (!_isExpired && !isSuccess) ...[
+                    const SizedBox(height: 10),
+                    Container(
+                      padding: const EdgeInsets.all(3),
+                      decoration: BoxDecoration(
+                        color: AppColors.darkSurface,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppColors.darkBorder),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _buildPrivacyOption(SharePrivacyLevel.full, 'Full Details', Icons.badge_outlined),
+                          _buildPrivacyOption(SharePrivacyLevel.work, 'Work Card', Icons.business_center_outlined),
+                          _buildPrivacyOption(SharePrivacyLevel.phoneOnly, 'Phone Only', Icons.phone_outlined),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _privacyLevel == SharePrivacyLevel.full
+                          ? 'Sharing all details (phones, email, org, notes)'
+                          : _privacyLevel == SharePrivacyLevel.work
+                              ? 'Sharing work card (phone, email, org; notes excluded)'
+                              : 'Sharing name and primary phone only',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: AppColors.darkSubtitle,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+
                   // Progress bar countdown
                   if (!_isExpired && !isSuccess) ...[
                     const SizedBox(height: 16),
@@ -671,6 +708,47 @@ class _QrScreenState extends ConsumerState<QrScreen> {
           ),
        
         ],
+      ),
+    );
+  }
+
+  Widget _buildPrivacyOption(SharePrivacyLevel level, String label, IconData icon) {
+    final isSelected = _privacyLevel == level;
+    return GestureDetector(
+      onTap: () {
+        if (_privacyLevel == level) return;
+        HapticFeedback.selectionClick();
+        setState(() {
+          _privacyLevel = level;
+        });
+        _startSession();
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSelected ? AppColors.accent : Colors.transparent,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 13,
+              color: isSelected ? Colors.white : AppColors.darkSubtitle,
+            ),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                color: isSelected ? Colors.white : AppColors.darkSubtitle,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

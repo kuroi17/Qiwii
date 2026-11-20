@@ -5,6 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Qiwii • Easy Contact Share</title>
   <link rel="icon" type="image/png" href="QiwiiLogo.png">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#FAF1E8">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Qiwii">
+  <link rel="apple-touch-icon" href="QiwiiLogo.png">
+
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
@@ -87,7 +94,38 @@
       line-height: 1.2;
       letter-spacing: -0.6px;
       color: var(--ink);
-      margin-bottom: 32px;
+      margin-bottom: 28px;
+    }
+
+    /* ── PIN Box ────────────────────────────────────────── */
+    .pin-box {
+      display: none;
+      width: 100%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 16px;
+      margin-bottom: 20px;
+      text-align: center;
+    }
+
+    .pin-input {
+      width: 140px;
+      text-align: center;
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: 8px;
+      padding: 10px;
+      border: 2px solid var(--border);
+      border-radius: 12px;
+      background: #FFFFFF;
+      color: var(--ink);
+      outline: none;
+      margin-bottom: 12px;
+    }
+
+    .pin-input:focus {
+      border-color: var(--accent);
     }
 
     /* ── Button Group ───────────────────────────────────── */
@@ -96,7 +134,7 @@
       flex-direction: column;
       gap: 12px;
       width: 100%;
-      margin-bottom: 32px;
+      margin-bottom: 28px;
     }
 
     .btn {
@@ -141,6 +179,20 @@
       font-weight: 700;
       color: #FFFFFF;
       letter-spacing: -0.2px;
+    }
+
+    .btn-vcard {
+      background-color: #FFFFFF;
+      color: var(--accent-dark);
+      border: 2px solid var(--accent);
+      font-size: 15.5px;
+      font-weight: 800;
+      letter-spacing: -0.2px;
+      display: none;
+    }
+
+    .btn-vcard:hover {
+      background-color: var(--surface);
     }
 
     .btn-secondary {
@@ -200,13 +252,29 @@
     <!-- Homepage Signature Headline -->
     <h1 class="headline">Less typing.<br>More connecting.</h1>
 
-    <!-- Action Buttons (Comfortable & Prominent) -->
+    <!-- Optional PIN Unlock Box -->
+    <div id="pinBox" class="pin-box">
+      <p style="font-size: 13px; color: var(--ink2); margin-bottom: 8px; font-weight: 600;">Transfer is protected with a 4-digit PIN:</p>
+      <input id="pinInput" class="pin-input" type="password" maxlength="4" placeholder="••••" inputmode="numeric" />
+      <div>
+        <button class="btn btn-primary" style="min-height: 44px; padding: 10px 24px; font-size: 14px; width: auto;" onclick="unlockWithPin()">Unlock Contacts</button>
+      </div>
+    </div>
+
+    <!-- Action Buttons -->
     <div class="btn-group">
+      <!-- Direct Save to Phone vCard Button (Receiver without app) -->
+      <button id="vcardBtn" class="btn btn-vcard" onclick="downloadVcf()">
+        <span id="vcardBtnText">Save to Contacts (.vcf)</span>
+      </button>
+
+      <!-- App Deep Link Button -->
       <a id="openAppBtn" href="#" class="btn btn-primary">
         <span id="btnText">Open in Qiwii</span>
         <span id="btnBadge" class="btn-badge"></span>
       </a>
 
+      <!-- Clipboard Copy Button -->
       <button id="copyBtn" class="btn btn-secondary" onclick="copyCode()">
         Copy Transfer Code
       </button>
@@ -222,30 +290,224 @@
   </div>
 
   <script>
+    // Register PWA Service Worker for offline capability
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function() {
+        navigator.serviceWorker.register('sw.js').catch(function() {});
+      });
+    }
+
     var hash = window.location.hash || '';
     var cleanPayload = hash.startsWith('#') ? hash.substring(1) : hash;
     var appUrl = cleanPayload ? ('qiwii://t#' + cleanPayload) : 'qiwii://';
 
     var openAppBtn = document.getElementById('openAppBtn');
     var btnBadge = document.getElementById('btnBadge');
+    var vcardBtn = document.getElementById('vcardBtn');
+    var vcardBtnText = document.getElementById('vcardBtnText');
+    var pinBox = document.getElementById('pinBox');
+    var pinInput = document.getElementById('pinInput');
+
+    var parsedContacts = [];
+    var directSalt = '';
+    var directEncryptedPayload = '';
 
     openAppBtn.href = appUrl;
 
     if (cleanPayload) {
+      // Direct format: <version>~<expMs>~<count>~<salt>~<payload>
       if (cleanPayload.includes('~')) {
         var parts = cleanPayload.split('~');
-        if (parts.length >= 2) {
-          var count = parseInt(parts[1], 10);
+        if (parts.length >= 3) {
+          var count = parseInt(parts[2], 10);
+          if (isNaN(count)) count = parseInt(parts[1], 10);
           if (!isNaN(count) && count > 0) {
             btnBadge.textContent = count + (count === 1 ? ' contact' : ' contacts');
             btnBadge.style.display = 'inline-flex';
           }
         }
+
+        // Check if direct payload is PIN protected or ready for immediate vCard parsing
+        if (parts.length >= 5) {
+          directSalt = parts[3];
+          directEncryptedPayload = parts.slice(4).join('~');
+
+          if (directSalt && directSalt.length > 0) {
+            // Protected with PIN - show PIN unlock box
+            pinBox.style.display = 'block';
+          } else {
+            // Unencrypted - attempt client-side decompression and vCard prep
+            attemptUnpack(directEncryptedPayload);
+          }
+        }
       }
 
+      // Auto-open app if installed
       setTimeout(function() {
         window.location.href = appUrl;
-      }, 300);
+      }, 400);
+    }
+
+    async function attemptUnpack(encodedData) {
+      try {
+        var decompressed = await decompressZlib(encodedData);
+        if (decompressed) {
+          parsedContacts = parseCompactContacts(decompressed);
+          if (parsedContacts.length > 0) {
+            var label = parsedContacts.length === 1 
+              ? 'Save Contact to Phone (.vcf)' 
+              : 'Save ' + parsedContacts.length + ' Contacts to Phone (.vcf)';
+            vcardBtnText.textContent = label;
+            vcardBtn.style.display = 'inline-flex';
+          }
+        }
+      } catch (err) {
+        // Fallback gracefully
+      }
+    }
+
+    async function unlockWithPin() {
+      var pin = pinInput.value.trim();
+      if (!pin || pin.length < 4) {
+        showToast('Please enter a 4-digit PIN');
+        return;
+      }
+
+      try {
+        var decryptedText = await decryptPayload(directEncryptedPayload, pin, directSalt);
+        var decompressed = await decompressZlib(decryptedText);
+        parsedContacts = parseCompactContacts(decompressed);
+        if (parsedContacts.length > 0) {
+          pinBox.style.display = 'none';
+          var label = parsedContacts.length === 1 
+            ? 'Save Contact to Phone (.vcf)' 
+            : 'Save ' + parsedContacts.length + ' Contacts to Phone (.vcf)';
+          vcardBtnText.textContent = label;
+          vcardBtn.style.display = 'inline-flex';
+          showToast('Unlocked ' + parsedContacts.length + ' contacts!');
+        } else {
+          showToast('Invalid PIN or corrupted data.');
+        }
+      } catch (err) {
+        showToast('Incorrect PIN. Please try again.');
+      }
+    }
+
+    function parseCompactContacts(rawString) {
+      var contacts = [];
+      var body = rawString.startsWith('1~') ? rawString.substring(2) : rawString;
+      var lines = body.split('\n');
+
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i].trim();
+        if (!line) continue;
+        var parts = line.split('|');
+        if (parts.length >= 2) {
+          contacts.push({
+            name: parts[0] || '',
+            phone: parts[1] || '',
+            email: parts[2] || '',
+            organization: parts[3] || '',
+            jobTitle: parts[4] || '',
+            secondaryPhone: parts[5] || '',
+            notes: parts[6] || ''
+          });
+        }
+      }
+      return contacts;
+    }
+
+    function downloadVcf() {
+      if (parsedContacts.length === 0) {
+        showToast('No contacts available to save.');
+        return;
+      }
+
+      var vcf = '';
+      for (var i = 0; i < parsedContacts.length; i++) {
+        var c = parsedContacts[i];
+        vcf += 'BEGIN:VCARD\r\nVERSION:3.0\r\n';
+        vcf += 'FN:' + (c.name || 'Unnamed') + '\r\n';
+        if (c.phone) vcf += 'TEL;TYPE=CELL:' + c.phone + '\r\n';
+        if (c.secondaryPhone) vcf += 'TEL;TYPE=WORK:' + c.secondaryPhone + '\r\n';
+        if (c.email) vcf += 'EMAIL;TYPE=INTERNET:' + c.email + '\r\n';
+        if (c.organization) vcf += 'ORG:' + c.organization + '\r\n';
+        if (c.jobTitle) vcf += 'TITLE:' + c.jobTitle + '\r\n';
+        if (c.notes) vcf += 'NOTE:' + c.notes + '\r\n';
+        vcf += 'END:VCARD\r\n';
+      }
+
+      var blob = new Blob([vcf], { type: 'text/vcard;charset=utf-8' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = 'qiwii-contacts.vcf';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      showToast('Opening contacts...');
+    }
+
+    async function decompressZlib(base64Data) {
+      try {
+        var binary = atob(base64Data.replace(/-/g, '+').replace(/_/g, '/'));
+        var bytes = new Uint8Array(binary.length);
+        for (var i = 0; i < binary.length; i++) {
+          bytes[i] = binary.charCodeAt(i);
+        }
+
+        if (typeof DecompressionStream !== 'undefined') {
+          var ds = new DecompressionStream('deflate');
+          var writer = ds.writable.getWriter();
+          writer.write(bytes);
+          writer.close();
+          var buffer = await new Response(ds.readable).arrayBuffer();
+          return new TextDecoder().decode(buffer);
+        }
+      } catch (e) {
+        // If not compressed or fallback
+      }
+      return base64Data;
+    }
+
+    async function decryptPayload(ciphertextB64, pin, salt) {
+      var enc = new TextEncoder();
+      var keyMaterial = await window.crypto.subtle.importKey(
+        'raw',
+        enc.encode(pin),
+        { name: 'PBKDF2' },
+        false,
+        ['deriveBits', 'deriveKey']
+      );
+
+      var key = await window.crypto.subtle.deriveKey(
+        {
+          name: 'PBKDF2',
+          salt: enc.encode(salt),
+          iterations: 10000,
+          hash: 'SHA-256'
+        },
+        keyMaterial,
+        { name: 'AES-GCM', length: 256 },
+        false,
+        ['decrypt']
+      );
+
+      var rawBytes = Uint8Array.from(atob(ciphertextB64.replace(/-/g, '+').replace(/_/g, '/')), function(c) {
+        return c.charCodeAt(0);
+      });
+
+      // Ciphertext format: [IV (16 bytes) + tag (16 bytes)] / AES-GCM
+      var iv = rawBytes.slice(0, 16);
+      var encryptedData = rawBytes.slice(16);
+
+      var decrypted = await window.crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv: iv },
+        key,
+        encryptedData
+      );
+
+      return new TextDecoder().decode(decrypted);
     }
 
     function copyCode() {
